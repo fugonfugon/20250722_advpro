@@ -1,0 +1,7 @@
+pyautogui
+opencv-python
+numpy
+PyOpenGL
+PyOpenGL_accelerate
+python-xlib
+glfw
