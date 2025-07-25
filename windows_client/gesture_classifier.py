@@ -7,34 +7,39 @@ import math           # ユークリッド距離計算に使用
 # 前のフレームのランドマーク位置と時刻を保持（動きの変化を判定するため）
 prev_landmarks = None
 prev_time = time.time()
+last_click_time = 0  # クリック時刻の記録用
 
 # ゆるめの閾値に調整したバージョン
-index_move_thresh = 0.06       # タップの動き：0.1 → 0.06
+index_move_thresh = 0.1       # タップの動き：0.1 → 0.06
 others_still_thresh = 0.035    # 他指の静止判定：0.02 → 0.035
-hand_move_thresh = 0.004       # マウス移動判定：0.01 → 0.008
+hand_move_thresh = 0.008      # マウス移動判定：0.01 → 0.008
 gesture_interval_click = 1.0   # タップの最小間隔：1.0s → 0.6s
-gesture_interval_scroll = 0.6  # スクロールも少し早く：1.0s → 0.6s
-gesture_interval_move = 0.08   # 移動の応答性：0.1s → 0.08s
+gesture_interval_scroll = 1.0  # スクロールも少し早く：1.0s → 0.6s
+gesture_interval_move = 0.08  # 移動の応答性：0.1s → 0.08s
 
 # 2点間のユークリッド距離を計算する関数（3D）
 def distance(p1, p2):
     return math.sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
 
 # ジェスチャーを判定する関数
-def classify_gesture(landmarks, frame_width=1920, frame_height=1080):
-    global prev_landmarks, prev_time
+def classify_gesture(landmarks, frame_width=1024, frame_height=768):
+    global prev_landmarks, prev_time, last_click_time
+
 
     # ランドマークがない、または21個ない場合は処理しない
     if not landmarks or len(landmarks) != 21:
-                # マウスカーソルを画面中央に戻す
-        center_x = frame_width // 2
-        center_y = frame_height // 2# カーソル移動
-        prev_landmarks = None  # 前回のランドマークもリセット（幽霊動作防止）
-        return {
-            "event": "moveTo",      # クリックイベント
-            "x": center_x,            # 指のx座標
-            "y": center_y             # 指のy座標
-        }
+        if prev_landmarks is not None:    
+                    # マウスカーソルを画面中央に戻す
+            center_x = frame_width // 2
+            center_y = frame_height // 2# カーソル移動
+            #prev_landmarks = None  # 前回のランドマークもリセット（幽霊動作防止）
+            return {
+                "event": "moveTo",      # クリックイベント
+                "x": center_x,            # 指のx座標
+                "y": center_y             # 指のy座標
+            }
+        else:
+            return None
 
     # 現在の時刻を取得
     now = time.time()
@@ -105,6 +110,7 @@ def classify_gesture(landmarks, frame_width=1920, frame_height=1080):
         dy = int((y -prev_landmarks[8][1]) * frame_height)
 
         prev_time = now            # 時間更新
+        last_click_time = now      # ← ★クリックの時間も記録
         prev_landmarks = landmarks # 状態更新
 
         return {
@@ -115,31 +121,42 @@ def classify_gesture(landmarks, frame_width=1920, frame_height=1080):
 
     # --- スクロール：人差し指と中指が立ち、他は曲げ、他の動きが少ない ---
     if (
-        finger_up["index"]
-        and finger_up["middle"]
-        and not finger_up["ring"]
-        and not finger_up["pinky"]
-        and not finger_up["thumb"]
-        and others_move < others_still_thresh
-        and (now - prev_time) > gesture_interval_scroll
+        finger_up["pinky"]
+        and prev_landmarks
+        #and not finger_up["index"]
+        #and not finger_up["ring"]
+        #and not finger_up["middle"]
+        #and not finger_up["thumb"]
+        #and others_move < others_still_thresh
+        #and (now - prev_time) > gesture_interval_scroll
     ):
+        dy = int((y -prev_landmarks[20][1]) * frame_height)
+        if(dy >=0):
+            direction = "up"
+        else:
+            direction = "down"   
+
         prev_time = now             # 時間更新
         prev_landmarks = landmarks # 状態更新
         return {
             "event": "scroll",     # スクロールイベント
-            "direction": "down",   # 下方向にスクロール
-            "amount": 100          # スクロール量
+            "direction": direction,   # 下方向にスクロール
+            "amount": abs(dy)        # スクロール量
         }
 
     # --- マウス移動：人差し指だけ立っていて、手全体が動いている ---
     if (
         finger_up["index"]
-        and not finger_up["middle"]
-        and not finger_up["ring"]
-        and not finger_up["pinky"]
-        and not finger_up["thumb"]
-        and total_hand_move > hand_move_thresh
-        and (now - prev_time) > gesture_interval_move
+        and (now - last_click_time) > gesture_interval_click
+        and prev_landmarks
+        
+        #and not finger_up["middle"]
+        #and not finger_up["ring"]
+        #and not finger_up["pinky"]
+        #and not finger_up["thumb"]
+        
+        #and total_hand_move > hand_move_thresh
+        #and (now - prev_time) > gesture_interval_move
     ):
         dx = int((x - prev_landmarks[8][0])  * frame_height)
         dy = int((y -prev_landmarks[8][1]) * frame_height)
